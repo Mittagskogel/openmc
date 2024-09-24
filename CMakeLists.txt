@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 project(openmc C CXX)
 
+# Get MPFR and GMP
+find_package(PkgConfig)
+pkg_check_modules(MPFR REQUIRED mpfr gmp)
+
+# Enzyme LLD
+find_package(Enzyme REQUIRED CONFIG)
+get_property(importTargetsAfter DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
+
 # Set version numbers
 set(OPENMC_VERSION_MAJOR 0)
 set(OPENMC_VERSION_MINOR 15)
@@ -450,7 +458,8 @@ if(MSVC)
   # compile definition must be specified.
   target_compile_definitions(libopenmc PRIVATE -DH5_BUILT_AS_DYNAMIC_LIB)
 else()
-  add_library(libopenmc SHARED ${libopenmc_SOURCES})
+  # Enzyme
+  add_library(libopenmc STATIC ${libopenmc_SOURCES})
 endif()
 
 add_library(OpenMC::libopenmc ALIAS libopenmc)
@@ -497,6 +506,12 @@ endif()
 # linker flags. Thus, we can pass both linker flags and libraries together.
 target_link_libraries(libopenmc ${ldflags} ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES}
                       xtensor gsl::gsl-lite-v1 fmt::fmt ${CMAKE_DL_LIBS})
+
+# Enzyme
+target_compile_definitions(libopenmc PUBLIC -DNOVERSION)
+target_compile_options(libopenmc PUBLIC "-include" "enzyme/fprt/mpfr.h")
+target_include_directories(libopenmc PUBLIC ${MPFR_INCLUDE_DIRS} "/scratch/fhrold/riken/Enzyme/enzyme/include")
+target_link_libraries(libopenmc LLDEnzymeFlags ${MPFR_LINK_LIBRARIES})
 
 if(TARGET pugixml::pugixml)
   target_link_libraries(libopenmc pugixml::pugixml)
@@ -569,6 +584,12 @@ add_executable(OpenMC::openmc ALIAS openmc)
 target_compile_options(openmc PRIVATE ${cxxflags})
 target_include_directories(openmc PRIVATE ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(openmc libopenmc)
+
+# Enzyme
+target_compile_definitions(openmc PUBLIC -DNOVERSION)
+target_compile_options(openmc PUBLIC "-include" "enzyme/fprt/mpfr.h")
+target_include_directories(openmc PRIVATE ${CMAKE_BINARY_DIR}/include PUBLIC ${MPFR_INCLUDE_DIRS} "/scratch/fhrold/riken/Enzyme/enzyme/include")
+target_link_libraries(openmc libopenmc LLDEnzymeFlags ${MPFR_LINK_LIBRARIES})
 
 # Ensure C++17 standard is used and turn off GNU extensions
 target_compile_features(openmc PUBLIC cxx_std_17)
